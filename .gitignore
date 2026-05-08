@@ -1,0 +1,22 @@
+# Entorno virtual (uv / venv)
+.venv/
+env/
+venv/
+ENV/
+
+# Python (archivos temporales y caché)
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Datos pesados (opcional, pero recomendado)
+# Si tus bases de datos son muy grandes, descomenta la siguiente línea:
+# data/*.db
+# data/*.csv
+
+# Configuración de VS Code
+.vscode/
