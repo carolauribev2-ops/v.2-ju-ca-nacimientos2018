@@ -185,7 +185,9 @@ DANE_CSS = f"""
   }}
 
   /* ── Hide default Streamlit chrome ── */
-  #MainMenu, footer, header {{ visibility: hidden; }}
+  #MainMenu, footer {{ visibility: hidden; }}
+  header {{ background: transparent !important; }}
+  [data-testid="stHeaderActionElements"] {{ display: none; }}
   .block-container {{ padding-top: 0 !important; }}
 
   /* ── App background ── */
