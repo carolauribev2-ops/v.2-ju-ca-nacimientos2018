@@ -478,7 +478,7 @@ get_feature_importance(pipeline)               # Importancia de variables
 
 ## Autores
 
-- **Juan Marangom** — Concepción del proyecto y arquitectura
+- **Juanita Arango** — Concepción del proyecto y arquitectura
 - **Carolina Uribe** — Desarrollo del pipeline y modelos
 
 Proyecto académico — Especialización en Ciencias de Datos e Inteligencia Artificial.
