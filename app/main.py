@@ -838,6 +838,13 @@ def main() -> None:
           <strong>Tasa de cesarea:</strong> 44.4 %
           &nbsp;|&nbsp;
           <strong>Tasa bajo peso:</strong> 9.1 %
+          
+          <hr style="border-color: rgba(255,255,255,0.15); margin: 14px 0;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11.5px;">
+            <span>Proyecto academico — Especializacion en Ciencias de Datos e Inteligencia Artificial</span>
+            <span>Desarrollado por: <strong>Juanita Arango</strong> y <strong>Carolina Uribe</strong></span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
