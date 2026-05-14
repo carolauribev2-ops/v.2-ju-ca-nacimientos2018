@@ -1,5 +1,8 @@
 # Predicción de Riesgo Perinatal — DANE Colombia 2018
 
+Juanita Maria Arango Mejia
+Carolina Uribe Villa
+
 Sistema de Machine Learning para predecir dos outcomes clínicos críticos en nacimientos
 a partir de los microdatos oficiales del DANE (Departamento Administrativo Nacional de Estadística,
 Colombia, año 2018).
