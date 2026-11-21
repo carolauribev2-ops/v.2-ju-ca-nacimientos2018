@@ -310,10 +310,10 @@ Todo el preprocesamiento está encapsulado dentro del **sklearn Pipeline**, lo q
 
 ## Interfaz Gráfica — Streamlit
 
-La aplicación web (`app/main.py`) implementa la identidad visual institucional del DANE Colombia:
+La aplicación web (`app/main.py`) usa una identidad visual inspirada en la paleta institucional del DANE:
 
 - **Paleta de colores:** magenta `#C0134E`, azul navy `#233979`, dorado `#FEC800`
-- **Logo:** ícono de tetero (neonatos) + logotipo DANE
+- **Marca:** wordmark tipográfico DANE
 - **Sidebar:** formulario de ingreso de 10 variables clínicas con selectboxes y sliders
 - **Panel principal:**
   - Gauge de probabilidad de cesárea (verde < 30 %, ámbar 30-60 %, rojo > 60 %)
@@ -408,6 +408,24 @@ uv run streamlit run app/main.py
 ```
 
 Abrir en el navegador: **http://localhost:8501**
+
+### Agente local de consultas
+
+El agente usa herramientas deterministas sobre el dataset procesado y los pipelines
+guardados. No usa un LLM: para preguntas no soportadas devuelve una respuesta explícita
+en vez de completar cifras. En este equipo, que tiene Python 3.12 instalado:
+
+```bash
+uv run --python 3.12 python -m agent.run --question "¿Cuántos nacimientos hay y cuál es la tasa de cesárea?"
+uv run --python 3.12 python -m agent.run --question "¿Cuál es la tasa de bajo peso por departamento?"
+uv run --python 3.12 python -m agent.run --question "Según el modelo, predice el riesgo de cesárea y bajo peso" --profile-file agent/sample_profile.json
+```
+
+El archivo `agent/sample_profile.json` contiene el ejemplo de las 10 variables.
+
+Cada respuesta incluye el nombre de la herramienta y evidencia JSON con la fuente,
+denominadores y resultados. Los valores agrupados se muestran como códigos/categorías
+DANE; las probabilidades del modelo no son frecuencias observadas ni consejo clínico.
 
 ---
 

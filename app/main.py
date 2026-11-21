@@ -121,59 +121,6 @@ T_GES_OPTIONS: dict[str, int] = {
 
 # ── CSS & Branding ─────────────────────────────────────────────────────────────
 
-LOGO_SVG = """
-<svg viewBox="0 0 340 88" xmlns="http://www.w3.org/2000/svg" width="340" height="88">
-
-  <!-- Baby bottle (tetero) icon -->
-  <g transform="translate(8, 4)">
-    <!-- Nipple tip -->
-    <ellipse cx="26" cy="9" rx="5" ry="3.5" fill="#C0134E" opacity="0.85"/>
-    <!-- Nipple base ring -->
-    <rect x="18" y="11" width="16" height="4" rx="2" fill="#233979"/>
-    <!-- Bottle neck -->
-    <rect x="20" y="15" width="12" height="7" rx="2" fill="#E8ECF8"/>
-    <rect x="20" y="15" width="12" height="7" rx="2" fill="none" stroke="#233979" stroke-width="1.2"/>
-    <!-- Bottle body -->
-    <rect x="14" y="22" width="24" height="44" rx="10" fill="#EEF2FF"/>
-    <rect x="14" y="22" width="24" height="44" rx="10" fill="none" stroke="#233979" stroke-width="1.5"/>
-    <!-- Liquid inside bottle -->
-    <rect x="16" y="38" width="20" height="26" rx="8" fill="#C0134E" opacity="0.18"/>
-    <!-- Measurement lines -->
-    <line x1="34" y1="35" x2="37" y2="35" stroke="#233979" stroke-width="1.2" opacity="0.6"/>
-    <line x1="34" y1="43" x2="37" y2="43" stroke="#233979" stroke-width="1.2" opacity="0.6"/>
-    <line x1="34" y1="51" x2="37" y2="51" stroke="#233979" stroke-width="1.2" opacity="0.6"/>
-    <!-- Bottom cap -->
-    <rect x="16" y="63" width="20" height="5" rx="3" fill="#233979" opacity="0.3"/>
-    <!-- Heart accent -->
-    <path d="M22 30 C22 28 24 27 26 29 C28 27 30 28 30 30 C30 32 26 35 26 35 C26 35 22 32 22 30 Z"
-          fill="#C0134E" opacity="0.7"/>
-  </g>
-
-  <!-- Vertical divider -->
-  <line x1="62" y1="10" x2="62" y2="78" stroke="#E0E4EE" stroke-width="1.5"/>
-
-  <!-- DANE logotype -->
-  <text x="74" y="44"
-        font-family="'Arial Black', 'Franklin Gothic Heavy', Arial, sans-serif"
-        font-size="30" font-weight="900" letter-spacing="3"
-        fill="#233979">DANE</text>
-
-  <!-- Magenta underline accent -->
-  <rect x="74" y="50" width="112" height="3" rx="2" fill="#C0134E"/>
-
-  <!-- Subtitle line 1 -->
-  <text x="74" y="66"
-        font-family="Arial, sans-serif" font-size="12" font-weight="600"
-        fill="#233979" letter-spacing="0.3">Prediccion de Riesgo Perinatal</text>
-
-  <!-- Subtitle line 2 -->
-  <text x="74" y="80"
-        font-family="Arial, sans-serif" font-size="10"
-        fill="#6B7280">Estadisticas Vitales · Nacimientos 2018</text>
-
-</svg>
-"""
-
 DANE_CSS = f"""
 <style>
   /* ── Typography & base ── */
@@ -198,25 +145,109 @@ DANE_CSS = f"""
   /* ── Custom header bar ── */
   .dane-topbar {{
     background: #FFFFFF;
-    border-bottom: 3px solid {DANE_MAGENTA};
-    padding: 16px 28px;
+    border-bottom: 4px solid {DANE_MAGENTA};
+    padding: 22px 32px;
     margin: -1px -1px 28px -1px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 28px;
     box-shadow: 0 2px 10px rgba(35,57,121,0.10);
+  }}
+  .dane-brand {{
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    min-width: 0;
+  }}
+  .dane-logo {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 auto;
+  }}
+  .dane-logo-word {{
+    color: {DANE_NAVY};
+    font-size: 40px;
+    font-weight: 850;
+    letter-spacing: -2px;
+    line-height: 1;
+  }}
+  .dane-logo-accent {{
+    width: 82%;
+    height: 4px;
+    margin-top: 5px;
+    border-radius: 3px;
+    background: {DANE_MAGENTA};
+  }}
+  .dane-brand-copy {{
+    border-left: 1px solid {DANE_BORDER};
+    padding-left: 22px;
+  }}
+  .dane-brand-eyebrow {{
+    margin: 0 0 5px;
+    color: {DANE_MAGENTA};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }}
+  .dane-brand-copy h1 {{
+    margin: 0;
+    color: {DANE_NAVY};
+    font-size: clamp(22px, 3vw, 32px);
+    font-weight: 750;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+  }}
+  .dane-brand-subtitle {{
+    margin: 6px 0 0;
+    color: {DANE_MUTED};
+    font-size: 13px;
   }}
   .dane-topbar-right {{
     text-align: right;
     color: {DANE_MUTED};
-    font-size: 11px;
-    line-height: 1.7;
+    font-size: 12px;
+    line-height: 1.6;
+    flex: 0 0 auto;
   }}
   .dane-topbar-right strong {{
     color: {DANE_MAGENTA};
-    font-size: 13px;
+    font-size: 10px;
     font-weight: 700;
     display: block;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }}
+  .dane-topbar-right span {{
+    display: block;
+    color: {DANE_NAVY};
+    font-size: 13px;
+    font-weight: 600;
+  }}
+  @media (max-width: 720px) {{
+    .dane-topbar {{
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 18px;
+      padding: 20px;
+    }}
+    .dane-brand {{
+      align-items: flex-start;
+      gap: 16px;
+    }}
+    .dane-logo-word {{
+      font-size: 32px;
+    }}
+    .dane-brand-copy {{
+      padding-left: 16px;
+    }}
+    .dane-topbar-right {{
+      padding-left: 16px;
+      text-align: left;
+      border-left: 2px solid {DANE_BORDER};
+    }}
   }}
 
   /* ── Flag ribbon ── */
@@ -630,14 +661,23 @@ def main() -> None:
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown(
         f"""
-        <div class="dane-topbar">
-          <div>{LOGO_SVG}</div>
-          <div class="dane-topbar-right">
-            <strong>Herramienta de Prediccion</strong><br>
-            Estadisticas Vitales · Colombia 2018<br>
-            Fuente: Microdatos DANE
+        <header class="dane-topbar">
+          <div class="dane-brand">
+            <div class="dane-logo" role="img" aria-label="DANE">
+              <span class="dane-logo-word" aria-hidden="true">DANE</span>
+              <span class="dane-logo-accent" aria-hidden="true"></span>
+            </div>
+            <div class="dane-brand-copy">
+              <p class="dane-brand-eyebrow">Estadísticas vitales · Colombia 2018</p>
+              <h1>Predicción de riesgo perinatal</h1>
+              <p class="dane-brand-subtitle">Cesárea · Bajo peso al nacer</p>
+            </div>
           </div>
-        </div>
+          <div class="dane-topbar-right">
+            <strong>Herramienta de apoyo</strong>
+            <span>Microdatos DANE</span>
+          </div>
+        </header>
         """,
         unsafe_allow_html=True,
     )
