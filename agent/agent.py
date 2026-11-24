@@ -13,7 +13,7 @@ from typing import Any
 
 import pandas as pd
 
-from .catalog import find_departments, normalize_text
+from .catalog import UNKNOWN_CODES, find_departments, normalize_text
 from .tools import build_tools, load_birth_data
 
 OUTCOME_NAMES = {
@@ -35,7 +35,9 @@ HELP_TEXT = (
     "cesárea o bajo peso, desgloses (por departamento, edad, semanas de gestación, "
     "área, régimen, sexo o multiplicidad) y filtros como «en Antioquia», «rural», "
     "«adolescentes», «prematuros», «subsidiado» o «embarazo múltiple». También "
-    "explico el desempeño de los modelos («¿qué tan bueno es el modelo?»). Para "
+    "hago rankings («los 5 departamentos con mayor tasa de cesárea»), comparo "
+    "departamentos («compara la cesárea entre Antioquia y Chocó») y explico el "
+    "desempeño de los modelos («¿qué tan bueno es el modelo?»). Para "
     "predicciones pásame un perfil completo con --profile. En modo básico entiendo "
     "frases simples; con ANTHROPIC_API_KEY configurada el agente usa Claude y "
     "entiende preguntas libres."
@@ -88,6 +90,63 @@ def _requested_group(question: str) -> str | None:
             ):
                 return column
     return None
+
+
+def _mentioned_group(question: str) -> str | None:
+    """Loose match: a group term anywhere in the question (used for rankings)."""
+    for terms, column in _GROUP_TERMS:
+        if _has_term(question, *terms):
+            return column
+    return None
+
+
+_RANK_HIGH = re.compile(
+    r"\b(con|de)\s+(la\s+|el\s+)?(mayor|mas alta|mas alto|maxima)\b"
+    r"|\bmayor(es)?\s+(tasa|tasas|porcentaje|proporcion)\b"
+    r"|\b(es|son|fue)\s+(mas\s+)?(mayor|mas alta|mas alto)\b"
+    r"|\bmas\s+(nacimientos|registros|partos|bebes|cesareas)\b"
+    r"|\btop\b"
+)
+_RANK_LOW = re.compile(
+    r"\b(con|de)\s+(la\s+|el\s+)?(menor|mas baja|mas bajo|minima)\b"
+    r"|\bmenor(es)?\s+(tasa|tasas|porcentaje|proporcion)\b"
+    r"|\b(es|son|fue)\s+(mas\s+)?(menor|mas baja|mas bajo)\b"
+    r"|\bmenos\s+(nacimientos|registros|partos|bebes|cesareas)\b"
+)
+MIN_RANKING_GROUP_SIZE = 100
+
+
+def _requested_ranking(question: str) -> tuple[str, int] | None:
+    """('desc' | 'asc', how many) when the question asks for a top/bottom list."""
+    if _RANK_HIGH.search(question):
+        direction = "desc"
+    elif _RANK_LOW.search(question):
+        direction = "asc"
+    else:
+        return None
+    size = re.search(
+        r"\b(\d{1,2})\s+(departamentos|deptos|grupos|categorias|primeros|ultimos)\b",
+        question,
+    ) or re.search(r"\btop\s*(\d{1,2})\b", question)
+    return direction, int(size.group(1)) if size else 5
+
+
+def _rank_groups(
+    groups: list[dict[str, Any]], variable: str, key: str, direction: str, limit: int
+) -> list[dict[str, Any]]:
+    """Top/bottom groups by `key`, without unknown codes or tiny groups."""
+    unknown = UNKNOWN_CODES.get(variable, set())
+    eligible = [
+        group
+        for group in groups
+        if group[key] is not None
+        and group["group_value"] != "sin_dato"
+        and group["group_value"] not in unknown
+        and group["record_count"] >= MIN_RANKING_GROUP_SIZE
+    ]
+    return sorted(eligible, key=lambda group: group[key], reverse=direction == "desc")[
+        :limit
+    ]
 
 
 def _age_code(years: int) -> int | None:
@@ -150,8 +209,20 @@ def _requested_filters(
     return filters
 
 
+def _n(value: int) -> str:
+    """Integer with Colombian thousands separator: 648154 -> '648.154'."""
+    return f"{value:,}".replace(",", ".")
+
+
+def _dec(value: float) -> str:
+    """Three decimals with a decimal comma: 0.719 -> '0,719'."""
+    return f"{value:.3f}".replace(".", ",")
+
+
 def _format_percentage(value: float | None) -> str:
-    return f"{value:.1%}" if value is not None else "sin datos válidos"
+    if value is None:
+        return "sin datos válidos"
+    return f"{value * 100:.1f}".replace(".", ",") + " %"
 
 
 def _describe_filters(applied: list[dict[str, Any]]) -> str:
@@ -239,10 +310,10 @@ class BirthsAgent:
                 )
                 parts.append(
                     f"{OUTCOME_NAMES[outcome]}: {info['selected_model_label']} con "
-                    f"ROC-AUC {best['roc_auc']:.3f} ± {best['roc_auc_std']:.3f} y "
-                    f"precisión promedio {best['average_precision']:.3f} (línea base "
-                    f"{info['average_precision_baseline']:.3f}), "
-                    f"{info['training_samples']:,} muestras"
+                    f"ROC-AUC {_dec(best['roc_auc'])} ± {_dec(best['roc_auc_std'])} y "
+                    f"precisión promedio {_dec(best['average_precision'])} (línea base "
+                    f"{_dec(info['average_precision_baseline'])}), "
+                    f"{_n(info['training_samples'])} muestras"
                 )
             return AgentResponse(
                 f"Desempeño con {evidence['validation'].lower()}: "
@@ -281,42 +352,102 @@ class BirthsAgent:
             )
             return AgentResponse(answer, "predict_risks", evidence)
 
+        ranking = _requested_ranking(normalized)
+        if ranking and group_by is None:
+            group_by = _mentioned_group(normalized) or "CODPTORE"
+        # Several departments named with an outcome: compare them side by side.
+        comparison = (
+            group_by is None
+            and bool(outcomes)
+            and len(filters.get("CODPTORE", [])) >= 2
+        )
+        if comparison:
+            group_by = "CODPTORE"
+
         if group_by and outcomes:
             results = [
                 self.tools["grouped_outcome"](outcome, group_by, filters)
                 for outcome in outcomes
             ]
+            evidence: dict[str, Any] = {"results": results}
+            references = {}
+            base_filters = {k: v for k, v in filters.items() if k != group_by}
+            reference_label = (
+                "Total nacional" if not base_filters else "Total con los mismos filtros"
+            )
+            if ranking or comparison:
+                references = {
+                    outcome: self.tools["outcome_summary"](outcome, base_filters)
+                    for outcome in outcomes
+                }
+                evidence["reference"] = references
+            if ranking:
+                evidence["ranking"] = {
+                    "direction": ranking[0],
+                    "limit": ranking[1],
+                    "min_group_size": MIN_RANKING_GROUP_SIZE,
+                }
+
             descriptions = []
             for result in results:
-                groups = "; ".join(
-                    f"{group['group_label']} ({group['group_value']}): "
-                    f"{group['positive_count']:,}/{group['valid_outcome_count']:,} "
+                outcome = result["outcome"]
+                groups = result["groups"]
+                if ranking:
+                    groups = _rank_groups(
+                        groups, group_by, "positive_rate", ranking[0], ranking[1]
+                    )
+                    title = (
+                        f"{len(groups)} con {'mayor' if ranking[0] == 'desc' else 'menor'} "
+                        f"tasa de {OUTCOME_NAMES[outcome]} por {GROUP_NAMES[group_by]} "
+                        f"(grupos con al menos {MIN_RANKING_GROUP_SIZE} registros)"
+                    )
+                else:
+                    title = f"{OUTCOME_NAMES[outcome]} por {GROUP_NAMES[group_by]}"
+                lines = "\n".join(
+                    (f"{position}. " if ranking else "- ")
+                    + f"{group['group_label']} ({group['group_value']}): "
+                    f"{_n(group['positive_count'])}/{_n(group['valid_outcome_count'])} "
                     f"({_format_percentage(group['positive_rate'])})"
-                    for group in result["groups"]
+                    for position, group in enumerate(groups, start=1)
                 )
-                descriptions.append(
-                    f"{OUTCOME_NAMES[result['outcome']]} por "
-                    f"{GROUP_NAMES[group_by]}: {groups}"
-                )
+                description = f"{title[0].upper()}{title[1:]}:\n{lines}"
+                if outcome in references:
+                    description += (
+                        f"\n\n{reference_label}: "
+                        f"{_format_percentage(references[outcome]['positive_rate'])}"
+                    )
+                descriptions.append(description)
             return AgentResponse(
-                "Resultados observados"
+                "Resultados observados (DANE 2018)"
                 + _describe_filters(results[0]["filters"])
-                + ": "
-                + " | ".join(descriptions),
+                + ".\n\n"
+                + "\n\n".join(descriptions),
                 "grouped_outcome",
-                {"results": results},
+                evidence,
             )
 
         if group_by:
             evidence = self.tools["group_distribution"](group_by, filters)
-            groups = "; ".join(
-                f"{group['group_label']} ({group['group_value']}): "
-                f"{group['record_count']:,} ({_format_percentage(group['share'])})"
-                for group in evidence["groups"]
+            groups = evidence["groups"]
+            if ranking:
+                groups = _rank_groups(
+                    groups, group_by, "record_count", ranking[0], ranking[1]
+                )
+                evidence["ranking"] = {"direction": ranking[0], "limit": ranking[1]}
+                heading = (
+                    f"{len(groups)} con {'más' if ranking[0] == 'desc' else 'menos'} "
+                    f"registros por {GROUP_NAMES[group_by]}"
+                )
+            else:
+                heading = f"Registros por {GROUP_NAMES[group_by]}"
+            lines = "\n".join(
+                (f"{position}. " if ranking else "- ")
+                + f"{group['group_label']} ({group['group_value']}): "
+                f"{_n(group['record_count'])} ({_format_percentage(group['share'])})"
+                for position, group in enumerate(groups, start=1)
             )
             return AgentResponse(
-                f"Registros por {GROUP_NAMES[group_by]}"
-                f"{_describe_filters(evidence['filters'])}: {groups}",
+                f"{heading}{_describe_filters(evidence['filters'])}:\n{lines}",
                 "group_distribution",
                 evidence,
             )
@@ -345,8 +476,8 @@ class BirthsAgent:
             answer = (
                 f"{OUTCOME_NAMES[outcomes[0]].capitalize()}"
                 f"{_describe_filters(evidence['filters'])}: "
-                f"{evidence['positive_count']:,} casos de "
-                f"{evidence['records_with_valid_outcome']:,} registros con "
+                f"{_n(evidence['positive_count'])} casos de "
+                f"{_n(evidence['records_with_valid_outcome'])} registros con "
                 f"resultado válido ({_format_percentage(evidence['positive_rate'])})."
             )
             return AgentResponse(answer, "outcome_summary", evidence)
@@ -355,14 +486,14 @@ class BirthsAgent:
             evidence = self.tools["dataset_overview"](filters)
             outcomes_text = "; ".join(
                 f"{OUTCOME_NAMES[outcome]}: "
-                f"{summary['positive_count']:,}/"
-                f"{summary['records_with_valid_outcome']:,} "
+                f"{_n(summary['positive_count'])}/"
+                f"{_n(summary['records_with_valid_outcome'])} "
                 f"({_format_percentage(summary['positive_rate'])})"
                 for outcome, summary in evidence["outcomes"].items()
             )
             scope = "El dataset contiene" if not evidence["filters"] else "Hay"
             return AgentResponse(
-                f"{scope} {evidence['record_count']:,} registros"
+                f"{scope} {_n(evidence['record_count'])} registros"
                 f"{_describe_filters(evidence['filters'])}. "
                 f"Resultados observados: {outcomes_text}.",
                 "dataset_overview",
