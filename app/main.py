@@ -82,13 +82,15 @@ AREA_OPTIONS: dict[str, int] = {
     "Desconocido": -1,
 }
 
+# IDCLASADMI: entidad administradora en salud (diccionario DANE). El nulo (-1)
+# coincide con SEG_SOCIAL = 5 (no asegurado) en el dataset crudo.
 REGIMEN_OPTIONS: dict[str, int] = {
-    "Contributivo (EPS privada)": 1,
-    "Subsidiado (SISBEN)": 2,
-    "Especial (FF.MM / Policia)": 3,
-    "Excepcion (Ecopetrol / Magisterio)": 4,
-    "No asegurado / Sin afiliacion": 5,
-    "Desconocido": -1,
+    "EPS - regimen contributivo": 1,
+    "EPS - regimen subsidiado": 2,
+    "Entidad adaptada de salud (contributivo)": 3,
+    "Entidad especial de salud": 4,
+    "Entidad exceptuada de salud": 5,
+    "No asegurada (sin entidad)": -1,
 }
 
 MUL_PARTO_OPTIONS: dict[str, int] = {
@@ -99,7 +101,7 @@ MUL_PARTO_OPTIONS: dict[str, int] = {
 
 # DANE EDAD_MADRE categorical codes
 EDAD_MADRE_OPTIONS: dict[str, int] = {
-    "Menor de 15 anos": 1,
+    "10 - 14 anos": 1,
     "15 - 19 anos": 2,
     "20 - 24 anos": 3,
     "25 - 29 anos": 4,
@@ -107,14 +109,14 @@ EDAD_MADRE_OPTIONS: dict[str, int] = {
     "35 - 39 anos": 6,
     "40 - 44 anos": 7,
     "45 - 49 anos": 8,
-    "50 anos o mas": 9,
+    "50 - 54 anos": 9,
 }
 
-# DANE T_GES categorical codes
+# DANE T_GES categorical codes (el codigo 3 incluye la semana 37, ya a termino)
 T_GES_OPTIONS: dict[str, int] = {
     "22 - 27 semanas (muy prematuro)": 2,
-    "28 - 36 semanas (prematuro)": 3,
-    "37 - 41 semanas (termino)": 4,
+    "28 - 37 semanas (mayoria prematuros)": 3,
+    "38 - 41 semanas (termino)": 4,
     "42 o mas semanas (postermino)": 5,
     "Sin informacion": 9,
 }
@@ -378,6 +380,11 @@ DANE_CSS = f"""
     font-size: 13px;
     color: {DANE_NAVY};
   }}
+  /* Page navigation (main / Asistente): readable on the white sidebar */
+  section[data-testid="stSidebar"] [data-testid="stSidebarNavLink"] span {{
+    color: {DANE_NAVY} !important;
+    font-weight: 600;
+  }}
   section[data-testid="stSidebar"] h1,
   section[data-testid="stSidebar"] h2,
   section[data-testid="stSidebar"] h3 {{
@@ -541,7 +548,7 @@ def cesarea_risk_factors(
 
     # ── Edad materna ──
     if edad_code == 1:
-        factors.append("Madre menor de 15 anos — desproporcion cefalopelvica frecuente en adolescentes")
+        factors.append("Madre de 10-14 anos — desproporcion cefalopelvica frecuente en adolescentes")
     elif edad_code in {7, 8, 9}:
         factors.append("Edad materna avanzada (>= 40 anos) — mayor probabilidad de cesarea programada")
     elif edad_code == 6:
@@ -549,7 +556,7 @@ def cesarea_risk_factors(
 
     # ── Gestacion ──
     if t_ges_code in {2, 3}:
-        factors.append("Parto prematuro (< 37 semanas) — indicacion medica frecuente de cesarea")
+        factors.append("Gestacion de 22-37 semanas (incluye partos prematuros) — indicacion medica frecuente de cesarea")
     elif t_ges_code == 5:
         factors.append("Gestacion postermino (>= 42 semanas) — mayor riesgo de sufrimiento fetal")
 
@@ -574,15 +581,15 @@ def cesarea_risk_factors(
         factors.append("Residencia rural — menor acceso a parto natural asistido y mayor derivacion hospitalaria")
 
     # ── Regimen de salud ──
-    if idclasadmi in {5, -1}:
-        factors.append("Sin cobertura en salud — seguimiento prenatal irregular o ausente")
-    elif idclasadmi in {3, 4}:
-        factors.append("Regimen especial (FF.MM./Ecopetrol/Magisterio) — mayor tasa de cesarea programada en estos regimenes")
+    if idclasadmi == -1:
+        factors.append("Sin aseguramiento en salud — seguimiento prenatal irregular o ausente")
+    elif idclasadmi in {4, 5}:
+        factors.append("Entidad especial o exceptuada de salud — mayor tasa de cesarea programada en estos regimenes")
 
     # ── Nota cuando la probabilidad es alta sin factores individuales criticos ──
     if not factors and prob >= 0.50:
         factors.append(
-            f"La probabilidad ({prob:.0%}) supera la media nacional (~44.7%). "
+            f"La probabilidad ({prob:.0%}) supera la media nacional (~44.4%). "
             "La combinacion de caracteristicas demograficas, departamento y acceso al sistema "
             "de salud eleva el riesgo, aunque no se detectan factores clinicos individuales criticos."
         )
@@ -606,11 +613,11 @@ def bajo_peso_risk_factors(
     if t_ges_code == 2:
         factors.append("Prematuridad extrema (22-27 semanas) — causa directa de bajo peso severo")
     elif t_ges_code == 3:
-        factors.append("Prematuridad (28-36 semanas) — principal causa de bajo peso al nacer")
+        factors.append("Gestacion de 28-37 semanas (incluye prematuros) — la prematuridad es la principal causa de bajo peso al nacer")
 
     # ── Edad materna ──
     if edad_code == 1:
-        factors.append("Madre menor de 15 anos — mayor riesgo nutricional y de bajo peso neonatal")
+        factors.append("Madre de 10-14 anos — mayor riesgo nutricional y de bajo peso neonatal")
     elif edad_code in {7, 8, 9}:
         factors.append("Edad materna avanzada (>= 40 anos) — mayor riesgo de restriccion del crecimiento fetal")
 
@@ -637,13 +644,13 @@ def bajo_peso_risk_factors(
         factors.append("Centro poblado — acceso limitado a especialistas y seguimiento nutricional")
 
     # ── Cobertura en salud ──
-    if regimen in {5, -1}:
-        factors.append("Sin cobertura en salud — menor acceso a controles prenatales y suplementacion")
+    if regimen == -1:
+        factors.append("Sin aseguramiento en salud — menor acceso a controles prenatales y suplementacion")
 
     # ── Nota cuando la probabilidad es alta sin factores criticos ──
     if not factors and prob >= 0.15:
         factors.append(
-            f"La probabilidad ({prob:.0%}) supera la media nacional (~9.1%). "
+            f"La probabilidad ({prob:.0%}) supera la media nacional (~9.2%). "
             "La combinacion de caracteristicas del embarazo y acceso al sistema de salud "
             "eleva el riesgo sobre la media poblacional."
         )
@@ -734,7 +741,7 @@ def main() -> None:
         t_ges = T_GES_OPTIONS[t_ges_label]
         numconsul = st.slider("Consultas prenatales", min_value=0, max_value=20, value=6)
         n_emb = st.slider("N.° de embarazos (incluye el actual)", min_value=1, max_value=20, value=1)
-        n_hijosv = st.slider("Hijos vivos actualmente", min_value=1, max_value=15, value=1)
+        n_hijosv = st.slider("Hijos nacidos vivos (incluye este)", min_value=1, max_value=15, value=1)
         mul_label = st.selectbox("Tipo de gestacion", list(MUL_PARTO_OPTIONS.keys()))
         mul_parto = MUL_PARTO_OPTIONS[mul_label]
 
@@ -776,7 +783,7 @@ def main() -> None:
             st.markdown('<div class="dane-card">', unsafe_allow_html=True)
             st.plotly_chart(
                 gauge_chart(prob_c, "Probabilidad de Cesarea", DANE_MAGENTA),
-                use_container_width=True,
+                width="stretch",
             )
             st.markdown(prob_html(prob_c), unsafe_allow_html=True)
             st.markdown(risk_html(prob_c), unsafe_allow_html=True)
@@ -805,7 +812,7 @@ def main() -> None:
             st.markdown('<div class="dane-card dane-card-navy">', unsafe_allow_html=True)
             st.plotly_chart(
                 gauge_chart(prob_bp, "Riesgo de Bajo Peso", DANE_NAVY),
-                use_container_width=True,
+                width="stretch",
             )
             st.markdown(prob_html(prob_bp), unsafe_allow_html=True)
             st.markdown(risk_html(prob_bp), unsafe_allow_html=True)
@@ -829,8 +836,8 @@ def main() -> None:
     )
 
     rows = [
-        ("Edad materna",         edad_label,                "Riesgo si &lt;15 o &ge;40 anos"),
-        ("Semanas de gestacion", t_ges_label,               "Normal: 37-41 semanas"),
+        ("Edad materna",         edad_label,                "Riesgo si 10-14 o &ge;40 anos"),
+        ("Semanas de gestacion", t_ges_label,               "A termino: 38-41 semanas (codigo DANE 4)"),
         ("Consultas prenatales", f"{numconsul} consultas",  "Minimo recomendado: 4"),
         ("N.° embarazos",        str(n_emb),                ""),
         ("Hijos vivos",          str(n_hijosv),             ""),
@@ -877,7 +884,7 @@ def main() -> None:
           &nbsp;|&nbsp;
           <strong>Tasa de cesarea:</strong> 44.4 %
           &nbsp;|&nbsp;
-          <strong>Tasa bajo peso:</strong> 9.1 %
+          <strong>Tasa bajo peso:</strong> 9.2 %
           
           <hr style="border-color: rgba(255,255,255,0.15); margin: 14px 0;">
           

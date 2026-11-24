@@ -20,3 +20,7 @@ ENV/
 
 # Configuración de VS Code
 .vscode/
+# Secretos y configuración local
+.env
+.claude/worktrees/
+.claude/settings.local.json

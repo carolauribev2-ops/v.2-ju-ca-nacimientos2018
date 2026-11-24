@@ -61,7 +61,7 @@ def main():
         X = df[FEATURES].copy()
         y = df[target].copy()
         valid = X.notna().all(axis=1) & y.notna()
-        X, y = X[valid], y[valid]
+        X, y = X[valid], y[valid].astype(int)
         print(f"  Muestras: {len(X):,}  |  Positivos: {y.mean():.1%}")
 
         pipeline = build_quick_pipeline()

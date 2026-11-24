@@ -1,0 +1,74 @@
+{
+  "generado": "2026-11-23T19:46:54",
+  "dataset": "data/processed/nac2018_cleaned.csv",
+  "registros_dataset": 648154,
+  "variables_modelo": [
+    "EDAD_MADRE",
+    "T_GES",
+    "NUMCONSUL",
+    "N_HIJOSV",
+    "N_EMB",
+    "AREA_RES",
+    "IDCLASADMI",
+    "SEXO",
+    "MUL_PARTO",
+    "CODPTORE"
+  ],
+  "validacion": "Validación cruzada estratificada de 5 particiones",
+  "modelos": {
+    "CESAREA": {
+      "archivo": "models/cesarea_pipeline.pkl",
+      "modelo_seleccionado": "hist_gradient_boosting",
+      "muestras_entrenamiento": 645040,
+      "tasa_positivos": 0.44641727644797224,
+      "comparacion_cv": {
+        "logistic_regression": {
+          "roc_auc": 0.702935763939219,
+          "roc_auc_std": 0.0009364136321535643,
+          "avg_precision": 0.6632360610427829,
+          "avg_precision_std": 0.00038423542469973726
+        },
+        "random_forest": {
+          "roc_auc": 0.699765732842156,
+          "roc_auc_std": 0.0016197890783176145,
+          "avg_precision": 0.660567514615074,
+          "avg_precision_std": 0.0011326939470066076
+        },
+        "hist_gradient_boosting": {
+          "roc_auc": 0.7190138923771653,
+          "roc_auc_std": 0.0013123589785711415,
+          "avg_precision": 0.6811778158566881,
+          "avg_precision_std": 0.0007227509545319193
+        }
+      },
+      "segundos_entrenamiento": 103.7
+    },
+    "BAJO_PESO": {
+      "archivo": "models/bajo_peso_pipeline.pkl",
+      "modelo_seleccionado": "hist_gradient_boosting",
+      "muestras_entrenamiento": 643668,
+      "tasa_positivos": 0.09200550594405811,
+      "comparacion_cv": {
+        "logistic_regression": {
+          "roc_auc": 0.8743032828824646,
+          "roc_auc_std": 0.0008836758733603375,
+          "avg_precision": 0.5096734122622515,
+          "avg_precision_std": 0.0017067827761136345
+        },
+        "random_forest": {
+          "roc_auc": 0.8759434058810767,
+          "roc_auc_std": 0.0010693513213205017,
+          "avg_precision": 0.49377690527596696,
+          "avg_precision_std": 0.002397223979044873
+        },
+        "hist_gradient_boosting": {
+          "roc_auc": 0.878936474036711,
+          "roc_auc_std": 0.0011132065804285562,
+          "avg_precision": 0.5246451528201038,
+          "avg_precision_std": 0.0014902249118168816
+        }
+      },
+      "segundos_entrenamiento": 92.1
+    }
+  }
+}

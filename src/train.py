@@ -106,6 +106,15 @@ def cross_validate_pipeline(
 # ── Training entry point ───────────────────────────────────────────────────────
 
 
+def prepare_xy(df: pd.DataFrame, target: str) -> tuple[pd.DataFrame, pd.Series]:
+    """Model features and integer target, without rows that have missing values."""
+    X = df[FEATURES].copy()
+    y = df[target].copy()
+    valid_mask = X.notna().all(axis=1) & y.notna()
+    return X[valid_mask], y[valid_mask].astype(int)
+
+
+
 def train_model(
     df: pd.DataFrame,
     target: str,
@@ -123,11 +132,7 @@ def train_model(
 
     Returns the fitted pipeline and a comparison dict of all metrics.
     """
-    X = df[FEATURES].copy()
-    y = df[target].copy()
-
-    valid_mask = X.notna().all(axis=1) & y.notna()
-    X, y = X[valid_mask], y[valid_mask]
+    X, y = prepare_xy(df, target)
 
     print(
         f"\n[{target}] Training on {len(X):,} samples "
