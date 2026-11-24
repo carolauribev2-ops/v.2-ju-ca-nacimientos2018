@@ -47,7 +47,16 @@ ju-ca-nacimientos2018/
 │   └── train.py                         # Entrenamiento, CV, comparación y persistencia
 │
 ├── app/
-│   └── main.py                          # Interfaz gráfica Streamlit (identidad DANE)
+│   ├── main.py                          # Interfaz gráfica Streamlit (identidad DANE)
+│   └── pages/1_Asistente.py             # Chat con el agente dentro de la app
+│
+├── agent/                               # Agente de consulta (Claude + herramientas)
+│   ├── llm_agent.py                     # Agente con Claude: elige herramientas y conversa
+│   ├── agent.py                         # Modo básico sin LLM (respaldo determinista)
+│   ├── tools.py                         # Herramientas: conteos, tasas, filtros, predicción
+│   ├── catalog.py                       # Códigos DANE verificados (etiquetas)
+│   ├── factory.py                       # Elige modo según credenciales
+│   └── run.py                           # CLI: pregunta única o chat interactivo
 │
 ├── models/                              # Modelos entrenados (generados al ejecutar)
 │   ├── cesarea_pipeline.pkl             # Pipeline sklearn completo para cesárea
@@ -58,6 +67,7 @@ ju-ca-nacimientos2018/
 │   └── generate_notebooks.py            # Generador de notebooks desde Python
 │
 ├── main.py                              # CLI: limpieza + feature engineering + entrenamiento
+├── .env.example                         # Plantilla para ANTHROPIC_API_KEY (copiar a .env)
 ├── pyproject.toml                       # Configuración del proyecto (UV / PEP 518)
 ├── uv.lock                              # Lock file de dependencias (reproducible)
 └── diccionario_datos.md                 # Diccionario de variables DANE
@@ -70,7 +80,7 @@ nac2018.csv (crudo, 62 MB, encoding latin-1)
         │
         ▼
   [src/preprocessing.py — clean_data()]
-  • Elimina 26 columnas irrelevantes (post-parto, admin, granulares)
+  • Elimina columnas irrelevantes (post-parto, admin, granulares)
   • Imputa nulos administrativos con −1 (código "desconocido")
   • Coerce tipos numéricos (pd.to_numeric con errors='coerce')
   • Filtra registros inválidos (códigos DANE fuera de rango)
@@ -80,8 +90,8 @@ nac2018.csv (crudo, 62 MB, encoding latin-1)
   [src/preprocessing.py — engineer_features()]
   • CESAREA    = 1 si TIPO_PARTO == 2
   • BAJO_PESO  = 1 si PESO_NAC ∈ {1, 2, 3, 4}   (< 2 500 g)
-  • EDAD_RIESGO= 1 si EDAD_MADRE ∈ {1, 7, 8, 9}  (< 15 o ≥ 40 años)
-  • PREMATURO  = 1 si T_GES ∈ {1, 2, 3}           (< 37 semanas)
+  • EDAD_RIESGO= 1 si EDAD_MADRE ∈ {1, 7, 8, 9}  (10-14 o ≥ 40 años)
+  • PREMATURO  = 1 si T_GES_AGRU_CIE ∈ {1, 2, 3}  (< 37 semanas, agrupación CIE)
   • PRIMIGESTA = 1 si N_EMB == 1
         │
         ▼
@@ -125,9 +135,9 @@ Todos los filtros y la lógica de negocio deben operar sobre estos códigos, no 
 | `PESO_NAC` | 5 | 2 500 – 2 999 g (normal) |
 | `PESO_NAC` | 6 | 3 000 – 3 499 g (normal) |
 | `PESO_NAC` | 7 | 3 500 – 3 999 g (normal) |
-| `PESO_NAC` | 8 | 4 000 – 4 499 g |
-| `PESO_NAC` | 9 | ≥ 4 500 g |
-| `EDAD_MADRE` | 1 | < 15 años |
+| `PESO_NAC` | 8 | ≥ 4 000 g |
+| `PESO_NAC` | 9 | Sin información |
+| `EDAD_MADRE` | 1 | 10 – 14 años |
 | `EDAD_MADRE` | 2 | 15 – 19 años |
 | `EDAD_MADRE` | 3 | 20 – 24 años |
 | `EDAD_MADRE` | 4 | 25 – 29 años |
@@ -135,15 +145,21 @@ Todos los filtros y la lógica de negocio deben operar sobre estos códigos, no 
 | `EDAD_MADRE` | 6 | 35 – 39 años |
 | `EDAD_MADRE` | 7 | 40 – 44 años |
 | `EDAD_MADRE` | 8 | 45 – 49 años |
-| `EDAD_MADRE` | 9 | ≥ 50 años |
+| `EDAD_MADRE` | 9 | 50 – 54 años |
+| `T_GES` | 1 | < 22 semanas |
 | `T_GES` | 2 | 22 – 27 semanas (muy prematuro) |
-| `T_GES` | 3 | 28 – 36 semanas (prematuro) |
-| `T_GES` | 4 | 37 – 41 semanas (término, ~80 % de los casos) |
+| `T_GES` | 3 | 28 – 37 semanas (incluye la semana 37, ya a término) |
+| `T_GES` | 4 | 38 – 41 semanas (término, 78,6 % de los casos) |
 | `T_GES` | 5 | ≥ 42 semanas (postérmino) |
-| `T_GES` | 9 | Sin información |
+| `T_GES` | 6 / 9 | Ignorado / Sin información |
 | `TIPO_PARTO` | 1 | Espontáneo / vaginal |
 | `TIPO_PARTO` | 2 | Cesárea |
-| `TIPO_PARTO` | 3 | Instrumental (fórceps / vacío) |
+| `TIPO_PARTO` | 3 | Instrumentado (fórceps / vacío) |
+
+Para prematuridad (< 37 semanas) se usa `T_GES_AGRU_CIE` (3 = 28-36, 4 = 37-41 semanas),
+que se conserva en el dataset procesado. Etiquetas verificadas contra el
+[diccionario oficial del DANE](https://microdatos.dane.gov.co/index.php/catalog/652/data-dictionary/F41?file_name=nac2018);
+ver también `diccionario_datos.md`.
 
 ---
 
@@ -153,41 +169,49 @@ Todos los filtros y la lógica de negocio deben operar sobre estos códigos, no 
 
 | Target | Positivos | Negativos | Proporción positiva |
 |---|---|---|---|
-| `CESAREA` | ~290 000 | ~358 000 | ≈ 44.7 % |
-| `BAJO_PESO` | ~59 000 | ~589 000 | ≈ 9.1 % |
+| `CESAREA` | 287 958 | 360 196 | 44,4 % |
+| `BAJO_PESO` | 59 254 | 584 662 | 9,2 % (excluye 4 238 registros con peso sin información) |
 
 El dataset presenta **desbalance moderado en BAJO_PESO** (~10:1).
 Ambos modelos usan `class_weight='balanced'` para compensarlo.
 
 ### Hallazgos clave del EDA
 
+Cifras recalculadas sobre `data/processed/nac2018_cleaned.csv` (bajo peso sin los registros
+con peso "sin información"); el agente puede reproducir cada una.
+
 **Edad materna y resultado del parto**
-- Madres `< 15 años` (código 1) tienen mayor riesgo de cesárea por desproporción cefalopélvica.
-- Madres `≥ 40 años` (códigos 7-9) presentan tasas de cesárea 15-20 puntos porcentuales
-  más altas que el grupo de referencia (25-29 años, código 4).
+- Madres de 40 años o más (códigos 7-9) tienen 55,7 % de cesárea, unos 9 puntos más que el
+  grupo de 25-29 años (46,4 %); también más bajo peso (12,6 % frente a 8,4 %).
+- Madres de 10-14 años (código 1): cesárea 44,6 % (similar al promedio) y bajo peso 12,2 %.
 
 **Semanas de gestación y bajo peso**
-- El 80 % de los nacimientos ocurre entre semanas 37-41 (código T_GES = 4).
-- Los nacimientos prematuros (T_GES ∈ {2, 3}) concentran el 65-70 % de los casos de bajo peso,
-  siendo la prematuridad el principal predictor de esta condición.
+- El 78,6 % de los nacimientos ocurre entre las semanas 38-41 (`T_GES = 4`).
+- Los prematuros (< 37 semanas, `T_GES_AGRU_CIE ∈ {1, 2, 3}`) son el 9,5 % de los nacimientos
+  y concentran el 63,6 % de los casos de bajo peso (61,1 % de ellos nace con bajo peso,
+  frente a 3,7 % de los no prematuros).
 
 **Control prenatal**
-- Un número de consultas prenatales `< 4` se asocia con mayor riesgo en ambos outcomes.
+- Con menos de 4 consultas prenatales el bajo peso sube a 14,1 % (frente a 8,4 % con 4 o más),
+  pero la cesárea baja a 33,0 % (frente a 46,5 %).
 - La variable `NUMCONSUL` actúa como proxy del acceso efectivo al sistema de salud.
 
-**Área de residencia y régimen de salud**
-- Residencia rural (código 3) correlaciona con mayor bajo peso, posiblemente por menor
-  acceso a nutrición y atención obstétrica especializada.
-- Sin cobertura en salud (código 5) o régimen desconocido (−1) presentan mayor riesgo.
+**Área de residencia y aseguramiento**
+- La residencia rural dispersa (código 3) tiene menos cesárea (32,5 % frente a 47,1 % en
+  cabecera) y no más bajo peso (8,9 % frente a 9,4 %).
+- Las madres no aseguradas (`IDCLASADMI = -1`, nulo) tienen más bajo peso (10,5 %) y menos
+  cesárea (37,3 %). Las entidades especiales y exceptuadas (códigos 4 y 5) superan el 54 %
+  de cesárea.
 
 **Gestación múltiple**
-- `MUL_PARTO > 1` (embarazos gemelares o múltiples) es un predictor fuerte de cesárea
-  y de bajo peso simultáneamente, dado el menor tiempo de gestación promedio.
+- `MUL_PARTO > 1` es un predictor fuerte de ambos resultados: 91,7 % de cesárea en partos
+  dobles y 68,3 % de bajo peso en embarazos múltiples (frente a 8,1 % en simples).
 
 **Distribución geográfica**
-- Bogotá (código 11) y Antioquia (código 5) concentran el 38 % de los nacimientos.
-- La tasa de cesárea varía entre departamentos: San Andrés presenta las tasas más altas;
-  departamentos amazónicos tienen mayor proporción de partos vaginales.
+- Bogotá (código 11) y Antioquia (código 5) concentran el 25,0 % de los nacimientos.
+- La cesárea varía entre departamentos: las tasas más altas están en Sucre (70,2 %),
+  San Andrés (68,0 %) y Córdoba (67,7 %); las más bajas en Vaupés (11,0 %), Vichada (14,6 %)
+  y Guainía (19,8 %).
 
 ---
 
@@ -197,15 +221,15 @@ Ambos modelos usan `class_weight='balanced'` para compensarlo.
 
 | Variable | Descripción | Tipo | Rango / Categorías |
 |---|---|---|---|
-| `EDAD_MADRE` | Grupo de edad de la madre | Numérico (código 1-9) | 1=<15y … 9=50+y |
-| `T_GES` | Semanas de gestación al nacer | Numérico (código) | 2-5, 9 |
+| `EDAD_MADRE` | Grupo de edad de la madre | Numérico (código 1-9) | 1=10-14 … 9=50-54 años |
+| `T_GES` | Semanas de gestación al nacer | Numérico (código) | 1-6, 9 (3 = 28-37, 4 = 38-41) |
 | `NUMCONSUL` | Consultas prenatales realizadas | Numérico | 0 – 99 |
 | `N_HIJOSV` | Número de hijos vivos actualmente | Numérico | 0 – 99 |
 | `N_EMB` | Total de embarazos (incluido el actual) | Numérico | 1 – 99 |
-| `AREA_RES` | Área de residencia de la madre | Categórico | 1=Urbana, 2=Centro poblado, 3=Rural |
-| `IDCLASADMI` | Régimen de salud | Categórico | 1=Contributivo … 5=No asegurado |
+| `AREA_RES` | Área de residencia de la madre | Categórico | 1=Cabecera, 2=Centro poblado, 3=Rural disperso |
+| `IDCLASADMI` | Entidad administradora en salud | Categórico | 1=EPS contributivo, 2=EPS subsidiado, 3=Adaptada, 4=Especial, 5=Exceptuada, −1=No asegurada |
 | `SEXO` | Sexo del neonato | Categórico | 1=Masculino, 2=Femenino |
-| `MUL_PARTO` | Tipo de gestación | Categórico | 1=Simple, 2=Gemelar, 3=Múltiple |
+| `MUL_PARTO` | Multiplicidad del embarazo | Categórico | 1=Simple, 2=Doble, 3=Triple, 4=Cuádruple o más |
 | `CODPTORE` | Código departamento de residencia | Categórico | 5-99 (32 departamentos) |
 
 ### Variables objetivo (targets)
@@ -215,7 +239,7 @@ Ambos modelos usan `class_weight='balanced'` para compensarlo.
 | `CESAREA` | `TIPO_PARTO == 2` | Parto por cesárea |
 | `BAJO_PESO` | `PESO_NAC ∈ {1, 2, 3, 4}` | Peso al nacer < 2 500 g |
 
-### Variables eliminadas (26 columnas)
+### Variables eliminadas
 
 Las siguientes columnas fueron excluidas por las razones indicadas:
 
@@ -230,8 +254,10 @@ Las siguientes columnas fueron excluidas por las razones indicadas:
 | `ANO`, `MES` | Constantes (2018) o sin valor predictivo |
 | `ATEN_PAR`, `SIT_PARTO` | Administrativas, no disponibles pre-parto |
 | `NIV_EDUM`, `NIV_EDUP` | Educación padre/madre — predictor secundario |
-| `T_GES_AGRU_CIE` | Versión agrupada de `T_GES` — redundante |
 | `IDHEMOCLAS`, `IDFACTORRH` | Tipo sanguíneo — valor predictivo marginal |
+
+`T_GES_AGRU_CIE` se conserva en el dataset procesado (no como variable del modelo) porque es
+la única que separa los prematuros (< 37 semanas) de la semana 37.
 
 ---
 
@@ -297,6 +323,29 @@ X (10 features) ──► ColumnTransformer ──► Clasificador ──► pre
 El **ROC-AUC** va de 0.5 (aleatorio) a 1.0 (perfecto). Un modelo con ROC-AUC > 0.70
 en un problema médico real con variables administrativas se considera aceptable.
 
+### Resultados (validación cruzada estratificada, 5 particiones)
+
+Generados por `uv run python main.py` y guardados en `models/metricas_modelos.json`
+(el agente los consulta con la herramienta `model_metrics`).
+
+| Objetivo | Muestras | Positivos | Modelo | ROC-AUC | AP |
+|---|---|---|---|---|---|
+| `CESAREA` | 645 040 | 44,6 % | Regresión logística | 0,703 ± 0,001 | 0,663 |
+| | | | Random Forest | 0,700 ± 0,002 | 0,661 |
+| | | | **HistGradientBoosting** ✔ | **0,719 ± 0,001** | **0,681** |
+| `BAJO_PESO` | 643 668 | 9,2 % | Regresión logística | 0,874 ± 0,001 | 0,510 |
+| | | | Random Forest | 0,876 ± 0,001 | 0,494 |
+| | | | **HistGradientBoosting** ✔ | **0,879 ± 0,001** | **0,525** |
+
+La línea base de la AP es la tasa de positivos: el modelo de bajo peso (AP 0,525) concentra
+los casos unas 5,7 veces mejor que el azar (0,092). El modelo de cesárea discrimina de forma
+moderada (0,719): buena parte de la decisión de cesárea depende de factores clínicos que el
+certificado de nacido vivo no registra.
+
+Las celdas "ROC-AUC (test)" del notebook 03 evalúan sobre datos que el modelo ya vio al
+reentrenarse con todo el dataset, por lo que son optimistas; las métricas de referencia
+son las de validación cruzada de esta tabla.
+
 ### Preprocesamiento dentro del pipeline
 
 Todo el preprocesamiento está encapsulado dentro del **sklearn Pipeline**, lo que garantiza:
@@ -321,6 +370,7 @@ La aplicación web (`app/main.py`) usa una identidad visual inspirada en la pale
   - Badge de nivel de riesgo (BAJO / MODERADO / ALTO)
   - Lista de factores de riesgo identificados
   - Tabla de resumen clínico
+- **Página Asistente:** chat con el agente de consultas (ver sección *Agente de consultas*)
 
 ---
 
@@ -343,15 +393,20 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/jmarangom/ju-ca-nacimientos2018.git
-cd ju-ca-nacimientos2018
+git clone https://github.com/carolauribev2-ops/v.2-ju-ca-nacimientos2018.git
+cd v.2-ju-ca-nacimientos2018
 
 # 2. Crear entorno virtual e instalar dependencias
 uv sync
+# Si falla con "failed to hardlink" (carpetas sincronizadas con la nube en Windows):
+#   PowerShell:  $env:UV_LINK_MODE="copy"; uv sync
+#   Bash:        UV_LINK_MODE=copy uv sync
 
-# 3. Colocar el dataset crudo
-# Descargar desde: https://microdatos.dane.gov.co/index.php/catalog/652
-# Guardar como: data/raw/nac2018.csv
+# 3. (Opcional) Clave de Anthropic para el agente con Claude
+cp .env.example .env      # y escribe tu ANTHROPIC_API_KEY en .env
+
+# 4. El dataset crudo ya viene en data/raw/nac2018.csv
+# Fuente: https://microdatos.dane.gov.co/index.php/catalog/652
 ```
 
 ### Dependencias principales
@@ -366,6 +421,8 @@ uv sync
 | `plotly` | 5.24.0 | Gráficos interactivos (gauges en app) |
 | `streamlit` | 1.40.0 | Interfaz web |
 | `joblib` | 1.4.0 | Serialización de modelos |
+| `anthropic` | 2.13.0 | Agente con Claude (uso de herramientas) |
+| `python-dotenv` | 1.2.4 | Lectura de la clave desde `.env` |
 | `jupyter` | — | Ejecución de notebooks |
 
 ---
@@ -409,23 +466,90 @@ uv run streamlit run app/main.py
 
 Abrir en el navegador: **http://localhost:8501**
 
-### Agente local de consultas
+### Agente de consultas (Claude + herramientas)
 
-El agente usa herramientas deterministas sobre el dataset procesado y los pipelines
-guardados. No usa un LLM: para preguntas no soportadas devuelve una respuesta explícita
-en vez de completar cifras. En este equipo, que tiene Python 3.12 instalado:
+El agente responde en español preguntas libres sobre los datos y los modelos. **Claude**
+(modelo `claude-opus-5-5`) interpreta la pregunta, decide qué herramientas llamar y con qué
+filtros, y redacta la respuesta; **las cifras siempre salen de las herramientas** de
+`agent/tools.py`, que calculan sobre el dataset procesado y los pipelines guardados. Recuerda
+la conversación, así que admite preguntas de seguimiento ("¿y en zona rural?").
 
-```bash
-uv run --python 3.12 python -m agent.run --question "¿Cuántos nacimientos hay y cuál es la tasa de cesárea?"
-uv run --python 3.12 python -m agent.run --question "¿Cuál es la tasa de bajo peso por departamento?"
-uv run --python 3.12 python -m agent.run --question "Según el modelo, predice el riesgo de cesárea y bajo peso" --profile-file agent/sample_profile.json
+```mermaid
+flowchart LR
+    U["Usuario<br/>CLI o página Asistente"] --> K{"¿ANTHROPIC_API_KEY?"}
+    K -- sí --> C["Claude (claude-opus-5-5)<br/>interpreta y elige herramientas"]
+    K -- "no / error de API" --> B["Modo básico<br/>enrutador determinista"]
+    C -- "llamada con filtros" --> T["agent/tools.py"]
+    B --> T
+    T --> D[("Dataset DANE 2018<br/>648.154 registros")]
+    T --> M[("Modelos sklearn<br/>+ métricas de CV")]
+    T -- "evidencia JSON" --> C
+    C -- "respuesta con cifras de las herramientas" --> U
+    B -- respuesta --> U
 ```
 
-El archivo `agent/sample_profile.json` contiene el ejemplo de las 10 variables.
+| Herramienta | Qué calcula |
+|---|---|
+| `dataset_overview` | Registros y tasas observadas de cesárea y bajo peso, con filtros opcionales |
+| `grouped_outcome` | Tasa de un resultado desglosada por una variable (departamento, edad, etc.) |
+| `group_distribution` | Cuántos registros hay en cada categoría de una variable |
+| `predict_risks` | Probabilidades del modelo para un perfil completo de 10 variables |
+| `model_metrics` | Desempeño de los modelos con validación cruzada (`models/metricas_modelos.json`) |
 
-Cada respuesta incluye el nombre de la herramienta y evidencia JSON con la fuente,
-denominadores y resultados. Los valores agrupados se muestran como códigos/categorías
-DANE; las probabilidades del modelo no son frecuencias observadas ni consejo clínico.
+Los filtros aceptan cualquier variable de agrupación (`CODPTORE`, `EDAD_MADRE`, `T_GES`,
+`T_GES_AGRU_CIE`, `AREA_RES`, `IDCLASADMI`, `SEXO`, `MUL_PARTO`) o los resultados
+(`CESAREA`, `BAJO_PESO`), y cada respuesta trae las etiquetas DANE de `agent/catalog.py`.
+
+**Modos.** Con `ANTHROPIC_API_KEY` definida (en el entorno o en `.env`) el agente usa Claude.
+Sin clave, o si la API falla en modo `auto`, responde el **modo básico**: un enrutador
+determinista que entiende frases simples (totales, tasas, desgloses "por …" y filtros como
+"en Antioquia", "rural", "adolescentes", "prematuros", "subsidiado", "embarazo múltiple") y
+dice explícitamente cuando no entiende, en vez de devolver una cifra que responde otra cosa.
+
+```bash
+# Chat interactivo («nuevo» reinicia, «salir» termina)
+uv run python -m agent.run
+
+# Pregunta única (imprime la evidencia JSON de las herramientas)
+uv run python -m agent.run -q "¿Cuál es la tasa de cesárea en Antioquia comparada con el país?"
+uv run python -m agent.run -q "Bajo peso por edad de la madre en zona rural"
+uv run python -m agent.run -q "Según el modelo, predice el riesgo" --profile-file agent/sample_profile.json
+
+# Forzar un modo
+uv run python -m agent.run --modo basico -q "¿Cuántos bebés nacieron prematuros en Bogotá?"
+```
+
+También está en la interfaz web: `uv run streamlit run app/main.py` → menú lateral
+**Asistente**, con la evidencia de cada respuesta en un desplegable.
+
+Variables de entorno opcionales: `AGENTE_MODELO` (por defecto `claude-opus-5-5`) y
+`AGENTE_ESFUERZO` (`low`, `medium` —por defecto— o `high`). Las solicitudes activan el
+*fallback* del servidor de Anthropic ante rechazos de seguridad y el caché de prompts.
+Cada pregunta con Claude consume créditos de la cuenta de Anthropic.
+
+**Guion de demostración sugerido** (en orden, en el chat; muestra herramientas, filtros,
+memoria de la conversación, predicción y límites):
+
+1. «¿Cuántos nacimientos hubo en 2018 y cuál fue la tasa de cesárea?»
+2. «¿En qué departamentos la cesárea supera el 60 %?»
+3. «¿Y cómo es el bajo peso en esos departamentos?» — pregunta de seguimiento
+4. «Compara el bajo peso de los prematuros con el de los no prematuros»
+5. «Predice el riesgo para una madre de 17 años del Chocó, rural, subsidiada, primer
+   embarazo, 3 consultas prenatales, 38 semanas, embarazo simple, bebé niña» — Claude
+   convierte cada dato a su código DANE antes de llamar al modelo
+6. «¿Qué tan confiable es ese modelo?» — usa las métricas de validación cruzada
+7. «¿Cuántos nacimientos hubo en 2020?» — el agente reconoce que solo tiene datos de 2018
+
+Las preguntas 2-5 requieren el modo con Claude; el modo básico responde las preguntas
+directas (1, 6, 7 y variantes simples como «bajo peso en prematuros»).
+
+Pruebas (no consumen créditos: el ciclo con Claude se prueba con un transporte HTTP simulado):
+
+```bash
+uv run python -m unittest agent.test_tools agent.test_llm_agent
+```
+
+Las probabilidades del modelo no son frecuencias observadas ni consejo clínico.
 
 ---
 
@@ -483,6 +607,11 @@ get_feature_importance(pipeline)               # Importancia de variables
 
 5. **Grupo étnico excluido:** La variable `IDPERTET` fue excluida deliberadamente para
    evitar que el modelo discrimine por pertenencia étnica.
+
+6. **Códigos "sin información":** `PESO_NAC = 9` deja `BAJO_PESO` sin etiqueta y
+   `NUMCONSUL = 99` / `N_HIJOSV = 99` pasan a faltantes; esos registros no entran al
+   entrenamiento del modelo correspondiente (4 238 sin peso conocido, 3 106 sin número de
+   consultas).
 
 ---
 

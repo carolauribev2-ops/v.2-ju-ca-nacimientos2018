@@ -1,7 +1,7 @@
 """
 Preprocessing utilities for DANE birth records dataset (Nacimientos 2018).
 
-DANE PESO_NAC encoding (categorical codes, NOT actual grams):
+DANE PESO_NAC encoding (categorical codes, NOT actual grams; DANE dictionary):
     1: < 1 000 g     (extreme low birth weight)
     2: 1 000-1 499 g (very low birth weight)
     3: 1 500-1 999 g (low birth weight)
@@ -9,11 +9,16 @@ DANE PESO_NAC encoding (categorical codes, NOT actual grams):
     5: 2 500-2 999 g (normal)
     6: 3 000-3 499 g (normal)
     7: 3 500-3 999 g (normal)
-    8: 4 000-4 499 g (large)
-    9: >= 4 500 g / Sin informacion
+    8: >= 4 000 g
+    9: Sin informacion
 
 BAJO_PESO = 1 when PESO_NAC in {1, 2, 3, 4}  (birth weight < 2 500 g)
+            0 when PESO_NAC in {5, ..., 8}; missing (NA) when PESO_NAC = 9
+            ("Sin informacion"), so unknown weights are not counted as normal.
 CESAREA   = 1 when TIPO_PARTO == 2
+
+NUMCONSUL and N_HIJOSV use 99 for "Sin informacion"; it becomes a missing value
+instead of being read as 99 prenatal visits / 99 children.
 """
 
 from pathlib import Path
@@ -23,6 +28,9 @@ import pandas as pd
 # ── Encoding constants ─────────────────────────────────────────────────────────
 
 LOW_WEIGHT_CODES: set[int] = {1, 2, 3, 4}
+UNKNOWN_WEIGHT_CODE = 9
+# Count columns where the DANE code 99 means "Sin informacion".
+UNKNOWN_99_COLUMNS = ["NUMCONSUL", "N_HIJOSV"]
 
 TARGET_CESAREA = "CESAREA"
 TARGET_BAJO_PESO = "BAJO_PESO"
@@ -44,7 +52,6 @@ COLUMNS_TO_DROP = [
     "CODPRES",         # healthcare provider — too granular
     "NIV_EDUP",        # father education — secondary predictor
     "ULTCURPAD",       # father last grade — secondary predictor
-    "T_GES_AGRU_CIE",  # ICD-10 grouped version of T_GES — redundant
     "IDPERTET",        # ethnic group — sensitivity concern
     "ANO",             # year — constant (2018)
     "MES",             # month of birth — not clinically relevant
@@ -94,6 +101,9 @@ def _coerce_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["PESO_NAC", "EDAD_MADRE", "T_GES", "NUMCONSUL", "N_HIJOSV", "N_EMB"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    for col in UNKNOWN_99_COLUMNS:
+        if col in df.columns:
+            df[col] = df[col].mask(df[col] == 99)
     return df
 
 
@@ -102,10 +112,10 @@ def _filter_valid_records(df: pd.DataFrame) -> pd.DataFrame:
     Remove records with invalid administrative codes.
 
     DANE categorical encodings (all integer codes, NOT actual measurements):
-    - PESO_NAC  : 1-9 (weight groups)
-    - EDAD_MADRE: 1-9 (age groups; 1=<15y, 2=15-19y, 3=20-24y, ... 9=50+y)
-    - T_GES     : 1-6, 9 (gestational week groups; 4=37-41w is most common)
-    - TIPO_PARTO: 1=espontaneo, 2=cesarea, 3=instrumental
+    - PESO_NAC  : 1-8 weight groups, 9 = sin informacion
+    - EDAD_MADRE: 1-9 (age groups; 1=10-14y, 2=15-19y, ... 9=50-54y; 99 = sin info)
+    - T_GES     : 1=<22w, 2=22-27w, 3=28-37w, 4=38-41w, 5=42+w, 6=ignorado, 9=sin info
+    - TIPO_PARTO: 1=espontaneo, 2=cesarea, 3=instrumentado, 4=ignorado
     """
     n0 = len(df)
 
@@ -155,24 +165,32 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Create target variables and clinically meaningful derived features.
 
-    EDAD_MADRE DANE codes: 1=<15y, 2=15-19y, 3=20-24y, 4=25-29y,
-                           5=30-34y, 6=35-39y, 7=40-44y, 8=45-49y, 9=50+y
-    T_GES DANE codes     : 2=22-27w, 3=28-36w, 4=37-41w, 5=42+w, 9=unknown
+    EDAD_MADRE DANE codes: 1=10-14y, 2=15-19y, 3=20-24y, 4=25-29y,
+                           5=30-34y, 6=35-39y, 7=40-44y, 8=45-49y, 9=50-54y
+    T_GES DANE codes     : 1=<22w, 2=22-27w, 3=28-37w, 4=38-41w, 5=42+w,
+                           6=ignorado, 9=sin informacion
+    T_GES_AGRU_CIE codes : 1=<22w, 2=22-27w, 3=28-36w, 4=37-41w, 5=42+w,
+                           6=ignorado, 9=sin informacion
     """
     df = df.copy()
 
     # Target 1: C-section (1) vs other delivery (0)
     df[TARGET_CESAREA] = (df["TIPO_PARTO"] == 2).astype(int)
 
-    # Target 2: Low birth weight — PESO_NAC code <= 4 means < 2 500 g
-    df[TARGET_BAJO_PESO] = df["PESO_NAC"].isin(LOW_WEIGHT_CODES).astype(int)
+    # Target 2: Low birth weight — PESO_NAC code <= 4 means < 2 500 g.
+    # PESO_NAC = 9 ("Sin informacion") leaves the label unknown (NA), not 0.
+    low_weight = df["PESO_NAC"].isin(LOW_WEIGHT_CODES).astype("Int64")
+    df[TARGET_BAJO_PESO] = low_weight.mask(df["PESO_NAC"] == UNKNOWN_WEIGHT_CODE)
 
-    # High-risk age: code 1 (< 15y) or codes 7-9 (>= 40y)
+    # High-risk age: code 1 (10-14y) or codes 7-9 (>= 40y)
     df["EDAD_RIESGO"] = df["EDAD_MADRE"].isin({1, 7, 8, 9}).astype(int)
 
-    # Preterm birth: T_GES codes 2-3 (<37 weeks)
-    if "T_GES" in df.columns:
-        df["PREMATURO"] = df["T_GES"].isin({1, 2, 3}).astype(int)
+    # Preterm birth (< 37 weeks). T_GES code 3 (28-37w) includes week 37, so the
+    # ICD grouping T_GES_AGRU_CIE (codes 1-3 = < 37 weeks) is used when present.
+    if "T_GES_AGRU_CIE" in df.columns:
+        df["PREMATURO"] = df["T_GES_AGRU_CIE"].isin({1, 2, 3}).astype(int)
+    elif "T_GES" in df.columns:
+        df["PREMATURO"] = df["T_GES"].isin({1, 2}).astype(int)
 
     # First pregnancy
     df["PRIMIGESTA"] = (df["N_EMB"] == 1).astype(int)
