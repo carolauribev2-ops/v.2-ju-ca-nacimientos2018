@@ -149,6 +149,16 @@ VARIABLES: dict[str, dict[str, Any]] = {
     },
 }
 
+# Codes that mean "unknown" for each variable; rankings leave them out.
+UNKNOWN_CODES: dict[str, set[int]] = {
+    "CODPTORE": {-1},
+    "AREA_RES": {-1, 9},
+    "IDCLASADMI": {9},
+    "T_GES": {6, 9},
+    "T_GES_AGRU_CIE": {6, 9},
+    "MUL_PARTO": {9},
+}
+
 NUMERIC_VARIABLES: dict[str, str] = {
     "NUMCONSUL": "Número de consultas prenatales (0 = ninguna; 99 = sin información)",
     "N_HIJOSV": "Hijos nacidos vivos que ha tenido la madre, incluido el presente",

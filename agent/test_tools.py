@@ -215,7 +215,37 @@ class BasicAgentTests(unittest.TestCase):
             response = self.agent.answer("¿Qué tan bueno es el modelo?")
 
         self.assertEqual(response.tool_name, "model_metrics")
-        self.assertIn("ROC-AUC 0.660", response.answer)
+        self.assertIn("ROC-AUC 0,660", response.answer)
+
+    def _ranking_agent(self) -> BirthsAgent:
+        rows = []
+        # (department, records, C-sections): -1 is unknown and 13 is too small.
+        for code, total, positives in [(5, 100, 20), (11, 100, 50), (27, 100, 80),
+                                       (-1, 100, 90), (13, 10, 10)]:
+            rows += [{"CODPTORE": code, "CESAREA": int(i < positives), "BAJO_PESO": 0}
+                     for i in range(total)]
+        return BirthsAgent(pd.DataFrame(rows), "fixture.csv")
+
+    def test_ranking_skips_unknown_and_small_groups(self) -> None:
+        response = self._ranking_agent().answer(
+            "¿Cuáles son los 2 departamentos con mayor tasa de cesárea?"
+        )
+
+        self.assertEqual(response.tool_name, "grouped_outcome")
+        self.assertIn("1. Chocó (27)", response.answer)
+        self.assertIn("2. Bogotá, D.C. (11)", response.answer)
+        self.assertNotIn("Antioquia", response.answer)
+        self.assertIn("Total nacional", response.answer)
+
+    def test_named_departments_are_compared_side_by_side(self) -> None:
+        response = self._ranking_agent().answer(
+            "Compara la cesárea entre Antioquia y Chocó"
+        )
+
+        groups = response.evidence["results"][0]["groups"]
+        self.assertEqual([group["group_value"] for group in groups], [5, 27])
+        self.assertIn("20,0 %", response.answer)
+        self.assertIn("80,0 %", response.answer)
 
     def test_other_year_is_not_answered_with_2018_data(self) -> None:
         response = self.agent.answer("¿Cuántos nacimientos hubo en 2020?")

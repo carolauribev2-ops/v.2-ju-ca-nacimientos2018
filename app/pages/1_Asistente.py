@@ -19,11 +19,16 @@ from agent.tools import load_birth_data  # noqa: E402
 
 st.set_page_config(page_title="DANE · Asistente", page_icon="💬", layout="wide")
 
+# Guion de demostración: funciona en modo básico y con Claude.
 EXAMPLES = [
+    "¿Cuántos nacimientos hubo en 2018 y cuál fue la tasa de cesárea?",
     "¿Cuál es la tasa de cesárea en Antioquia?",
+    "Compara la cesárea entre Antioquia, Bogotá y Chocó",
+    "¿Cuáles son los 5 departamentos con mayor tasa de cesárea?",
     "Bajo peso por edad de la madre en zona rural",
-    "¿Cuántos bebés nacieron prematuros en Bogotá?",
-    "Cesárea por departamento en población subsidiada",
+    "¿Cuál es la tasa de bajo peso en prematuros?",
+    "¿Qué tan bueno es el modelo?",
+    "¿Cuántos nacimientos hubo en 2020?",
 ]
 MODE_LLM = "Claude (LLM)"
 MODE_BASIC = "Básico (sin LLM)"
@@ -56,13 +61,18 @@ with st.sidebar:
     modes = [MODE_LLM, MODE_BASIC] if has_credentials else [MODE_BASIC]
     mode = st.radio("Modo del agente", modes)
     if not has_credentials:
-        st.info(
-            "Para conversar con Claude define `ANTHROPIC_API_KEY` en el archivo "
-            "`.env` (ver `.env.example`) y reinicia la app."
+        st.caption(
+            "Modo básico: responde con reglas, sin LLM. Para activar Claude, define "
+            "`ANTHROPIC_API_KEY` en `.env` y reinicia la app."
         )
     if st.button("Nueva conversación", width="stretch"):
         st.session_state.pop("agent", None)
         st.session_state.history = []
+
+    st.markdown("### Preguntas de ejemplo")
+    for index, example in enumerate(EXAMPLES):
+        if st.button(example, key=f"example_{index}", width="stretch"):
+            st.session_state.pending_question = example
 
 if st.session_state.get("agent_mode") != mode or "agent" not in st.session_state:
     try:
@@ -80,15 +90,16 @@ st.caption(
     "predicciones no son consejo clínico."
 )
 
-if not st.session_state.history:
-    st.markdown("**Ejemplos:** " + " · ".join(f"«{example}»" for example in EXAMPLES))
+if not st.session_state.history and "pending_question" not in st.session_state:
+    st.info("Escribe una pregunta abajo o elige una de las preguntas de ejemplo del menú lateral.")
 
 for message in st.session_state.history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         _render_evidence(message.get("tool_name"), message.get("evidence"))
 
-if question := st.chat_input("Pregunta sobre los nacimientos de 2018…"):
+typed = st.chat_input("Pregunta sobre los nacimientos de 2018…")
+if question := typed or st.session_state.pop("pending_question", None):
     st.session_state.history.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)

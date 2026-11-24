@@ -502,8 +502,9 @@ Los filtros aceptan cualquier variable de agrupación (`CODPTORE`, `EDAD_MADRE`,
 
 **Modos.** Con `ANTHROPIC_API_KEY` definida (en el entorno o en `.env`) el agente usa Claude.
 Sin clave, o si la API falla en modo `auto`, responde el **modo básico**: un enrutador
-determinista que entiende frases simples (totales, tasas, desgloses "por …" y filtros como
-"en Antioquia", "rural", "adolescentes", "prematuros", "subsidiado", "embarazo múltiple") y
+determinista que entiende frases simples (totales, tasas, desgloses "por …", filtros como
+"en Antioquia", "rural", "adolescentes", "prematuros", "subsidiado", "embarazo múltiple",
+rankings "los 5 departamentos con mayor tasa…" y comparaciones entre departamentos) y
 dice explícitamente cuando no entiende, en vez de devolver una cifra que responde otra cosa.
 
 ```bash
@@ -527,21 +528,28 @@ Variables de entorno opcionales: `AGENTE_MODELO` (por defecto `claude-opus-5-5`)
 *fallback* del servidor de Anthropic ante rechazos de seguridad y el caché de prompts.
 Cada pregunta con Claude consume créditos de la cuenta de Anthropic.
 
-**Guion de demostración sugerido** (en orden, en el chat; muestra herramientas, filtros,
-memoria de la conversación, predicción y límites):
+**Guion de demostración (modo básico, sin clave).** Abre `uv run streamlit run app/main.py`:
 
-1. «¿Cuántos nacimientos hubo en 2018 y cuál fue la tasa de cesárea?»
-2. «¿En qué departamentos la cesárea supera el 60 %?»
-3. «¿Y cómo es el bajo peso en esos departamentos?» — pregunta de seguimiento
-4. «Compara el bajo peso de los prematuros con el de los no prematuros»
-5. «Predice el riesgo para una madre de 17 años del Chocó, rural, subsidiada, primer
-   embarazo, 3 consultas prenatales, 38 semanas, embarazo simple, bebé niña» — Claude
-   convierte cada dato a su código DANE antes de llamar al modelo
-6. «¿Qué tan confiable es ese modelo?» — usa las métricas de validación cruzada
-7. «¿Cuántos nacimientos hubo en 2020?» — el agente reconoce que solo tiene datos de 2018
+1. **Página principal (predicción):** cambia en el menú lateral la edad de la madre, las
+   semanas de gestación o el tipo de gestación y muestra cómo cambian las probabilidades
+   de cesárea y de bajo peso, con sus factores de riesgo.
+2. **Página Asistente (consultas):** haz clic, en orden, en las preguntas de ejemplo del
+   menú lateral. Cada una muestra una capacidad y su evidencia en el desplegable:
 
-Las preguntas 2-5 requieren el modo con Claude; el modo básico responde las preguntas
-directas (1, 6, 7 y variantes simples como «bajo peso en prematuros»).
+| Pregunta | Qué muestra |
+|---|---|
+| «¿Cuántos nacimientos hubo en 2018 y cuál fue la tasa de cesárea?» | Totales y tasas con numerador y denominador |
+| «¿Cuál es la tasa de cesárea en Antioquia?» | Filtro por departamento (32,0 % frente a 44,4 % nacional) |
+| «Compara la cesárea entre Antioquia, Bogotá y Chocó» | Comparación lado a lado con el total nacional |
+| «¿Cuáles son los 5 departamentos con mayor tasa de cesárea?» | Ranking (Sucre, San Andrés, Córdoba…) |
+| «Bajo peso por edad de la madre en zona rural» | Desglose combinado con filtro |
+| «¿Cuál es la tasa de bajo peso en prematuros?» | Prematuridad bien definida (< 37 semanas, CIE) |
+| «¿Qué tan bueno es el modelo?» | Métricas de validación cruzada |
+| «¿Cuántos nacimientos hubo en 2020?» | Reconoce sus límites: solo tiene datos de 2018 |
+
+Con una clave de Claude además funcionan preguntas libres y de seguimiento, por ejemplo
+«¿y cómo es el bajo peso en esos departamentos?» o «predice el riesgo para una madre de
+17 años del Chocó, rural, subsidiada, primer embarazo, 3 consultas, 38 semanas, bebé niña».
 
 Pruebas (no consumen créditos: el ciclo con Claude se prueba con un transporte HTTP simulado):
 
