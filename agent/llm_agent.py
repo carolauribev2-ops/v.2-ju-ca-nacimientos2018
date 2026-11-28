@@ -167,8 +167,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Devuelve el desempeño de los modelos predictivos medido con validación "
             "cruzada: ROC-AUC y precisión promedio de cada algoritmo candidato, el "
-            "modelo seleccionado y el número de muestras. Úsala cuando pregunten qué "
-            "tan bueno o confiable es el modelo, qué algoritmo se usó o cómo se evaluó."
+            "modelo seleccionado, el número de muestras y la calibración de las "
+            "probabilidades. Úsala cuando pregunten qué tan bueno o confiable es el "
+            "modelo, qué algoritmo se usó, cómo se evaluó o si sus porcentajes son "
+            "probabilidades reales."
         ),
         "strict": True,
         "input_schema": {

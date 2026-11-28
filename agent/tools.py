@@ -417,8 +417,8 @@ def predict_risks(profile: Mapping[str, Any]) -> dict[str, Any]:
         },
         "feature_names": list(FEATURES),
         "warning": (
-            "Estimación estadística del modelo, no frecuencia observada ni "
-            "consejo clínico."
+            "Probabilidad estimada por el modelo calibrado: no es una frecuencia "
+            "observada ni consejo clínico."
         ),
     }
 
@@ -444,7 +444,19 @@ def model_metrics(metrics_path: Path = METRICS_PATH) -> dict[str, Any]:
             }
             for name, values in info["comparacion_cv"].items()
         ]
+        calibration = info.get("calibracion")
         models[outcome] = {
+            "calibration": None
+            if calibration is None
+            else {
+                "method": "isotónica, validación cruzada de 5 particiones",
+                "held_out_share": calibration["particion_prueba"],
+                "observed_rate": calibration["tasa_real_prueba"],
+                "mean_probability_before": calibration["sin_calibrar"]["probabilidad_media"],
+                "mean_probability_after": calibration["calibrado"]["probabilidad_media"],
+                "brier_before": calibration["sin_calibrar"]["brier"],
+                "brier_after": calibration["calibrado"]["brier"],
+            },
             "selected_model": info["modelo_seleccionado"],
             "selected_model_label": MODEL_LABELS.get(
                 info["modelo_seleccionado"], info["modelo_seleccionado"]
@@ -465,7 +477,9 @@ def model_metrics(metrics_path: Path = METRICS_PATH) -> dict[str, Any]:
         "models": models,
         "notes": (
             "ROC-AUC: 0,5 = azar, 1 = perfecto. La línea base de la precisión "
-            "promedio (AP) es la tasa de positivos."
+            "promedio (AP) es la tasa de positivos. La calibración se mide en una "
+            "partición de prueba: tras calibrar, la probabilidad media debe "
+            "acercarse a la tasa real y el Brier (error cuadrático) debe bajar."
         ),
     }
 

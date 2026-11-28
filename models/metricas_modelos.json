@@ -1,5 +1,5 @@
 {
-  "generado": "2026-11-23T19:46:54",
+  "generado": "2026-11-27T21:13:51",
   "dataset": "data/processed/nac2018_cleaned.csv",
   "registros_dataset": 648154,
   "variables_modelo": [
@@ -41,7 +41,21 @@
           "avg_precision_std": 0.0007227509545319193
         }
       },
-      "segundos_entrenamiento": 103.7
+      "calibracion": {
+        "particion_prueba": 0.2,
+        "tasa_real_prueba": 0.44641417586506266,
+        "sin_calibrar": {
+          "probabilidad_media": 0.4914065209974452,
+          "brier": 0.21306465509142825,
+          "roc_auc": 0.7174906502692162
+        },
+        "calibrado": {
+          "probabilidad_media": 0.44551600637952565,
+          "brier": 0.21077537982119365,
+          "roc_auc": 0.7178952359801831
+        }
+      },
+      "segundos_entrenamiento": 169.9
     },
     "BAJO_PESO": {
       "archivo": "models/bajo_peso_pipeline.pkl",
@@ -68,7 +82,21 @@
           "avg_precision_std": 0.0014902249118168816
         }
       },
-      "segundos_entrenamiento": 92.1
+      "calibracion": {
+        "particion_prueba": 0.2,
+        "tasa_real_prueba": 0.09200366647505709,
+        "sin_calibrar": {
+          "probabilidad_media": 0.30432581296798333,
+          "brier": 0.12331163715721848,
+          "roc_auc": 0.880000989710564
+        },
+        "calibrado": {
+          "probabilidad_media": 0.09117762809966187,
+          "brier": 0.05834224441305306,
+          "roc_auc": 0.8801213574252373
+        }
+      },
+      "segundos_entrenamiento": 152.9
     }
   }
 }

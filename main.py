@@ -44,7 +44,7 @@ def main() -> None:
     }
     for target, filename in TARGETS.items():
         start = time.perf_counter()
-        _, comparison = train_model(df, target, filename)
+        model, comparison = train_model(df, target, filename)
         _, y = prepare_xy(df, target)
         best = max(comparison, key=lambda name: comparison[name]["roc_auc"])
         metrics["modelos"][target] = {
@@ -56,6 +56,7 @@ def main() -> None:
                 name: {key: float(value) for key, value in values.items()}
                 for name, values in comparison.items()
             },
+            "calibracion": model.calibration_report_,
             "segundos_entrenamiento": round(time.perf_counter() - start, 1),
         }
 

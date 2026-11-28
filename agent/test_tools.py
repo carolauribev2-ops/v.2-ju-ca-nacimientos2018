@@ -37,6 +37,12 @@ METRICS_FIXTURE = {
                     "avg_precision": 0.60, "avg_precision_std": 0.003,
                 },
             },
+            "calibracion": {
+                "particion_prueba": 0.2,
+                "tasa_real_prueba": 0.45,
+                "sin_calibrar": {"probabilidad_media": 0.50, "brier": 0.23, "roc_auc": 0.66},
+                "calibrado": {"probabilidad_media": 0.45, "brier": 0.22, "roc_auc": 0.66},
+            },
         }
     },
 }
@@ -155,6 +161,7 @@ class BirthToolsTests(unittest.TestCase):
         self.assertEqual(cesarea["selected_model_label"], "HistGradientBoosting")
         self.assertEqual(cesarea["average_precision_baseline"], 0.45)
         self.assertEqual(len(cesarea["cross_validation"]), 2)
+        self.assertEqual(cesarea["calibration"]["mean_probability_after"], 0.45)
 
     def test_model_metrics_without_file_explains_how_to_generate(self) -> None:
         with self.assertRaisesRegex(FileNotFoundError, "main.py"):
@@ -216,6 +223,7 @@ class BasicAgentTests(unittest.TestCase):
 
         self.assertEqual(response.tool_name, "model_metrics")
         self.assertIn("ROC-AUC 0,660", response.answer)
+        self.assertIn("calibradas: promedio 45,0 %", response.answer)
 
     def _ranking_agent(self) -> BirthsAgent:
         rows = []

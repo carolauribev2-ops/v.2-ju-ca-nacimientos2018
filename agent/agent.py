@@ -295,30 +295,42 @@ class BirthsAgent:
             "que tan preciso",
             "precision del modelo",
             "evaluacion del modelo",
+            "calibracion",
+            "calibrado",
+            "calibradas",
         )
         if metrics_requested and profile is None:
             try:
                 evidence = self.tools["model_metrics"]()
             except FileNotFoundError as error:
                 return AgentResponse(str(error), None, None)
-            parts = []
+            lines = []
             for outcome, info in evidence["models"].items():
                 best = next(
                     row
                     for row in info["cross_validation"]
                     if row["model"] == info["selected_model"]
                 )
-                parts.append(
-                    f"{OUTCOME_NAMES[outcome]}: {info['selected_model_label']} con "
-                    f"ROC-AUC {_dec(best['roc_auc'])} ± {_dec(best['roc_auc_std'])} y "
-                    f"precisión promedio {_dec(best['average_precision'])} (línea base "
-                    f"{_dec(info['average_precision_baseline'])}), "
-                    f"{_n(info['training_samples'])} muestras"
+                line = (
+                    f"- {OUTCOME_NAMES[outcome].capitalize()}: "
+                    f"{info['selected_model_label']}, ROC-AUC {_dec(best['roc_auc'])} "
+                    f"± {_dec(best['roc_auc_std'])} y precisión promedio "
+                    f"{_dec(best['average_precision'])} (línea base "
+                    f"{_dec(info['average_precision_baseline'])}); "
+                    f"{_n(info['training_samples'])} muestras."
                 )
+                calibration = info.get("calibration")
+                if calibration:
+                    line += (
+                        " Probabilidades calibradas: promedio "
+                        f"{_format_percentage(calibration['mean_probability_after'])} "
+                        f"frente a {_format_percentage(calibration['observed_rate'])} "
+                        "real (sin calibrar: "
+                        f"{_format_percentage(calibration['mean_probability_before'])})."
+                    )
+                lines.append(line)
             return AgentResponse(
-                f"Desempeño con {evidence['validation'].lower()}: "
-                + "; ".join(parts)
-                + ".",
+                f"Desempeño con {evidence['validation'].lower()}:\n" + "\n".join(lines),
                 "model_metrics",
                 evidence,
             )

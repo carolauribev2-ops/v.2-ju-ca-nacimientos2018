@@ -102,7 +102,7 @@ nac2018.csv (crudo, 62 MB, encoding latin-1)
   • Preprocesador ColumnTransformer (numérico + categórico)
   • Validación cruzada estratificada 5-fold sobre 3 candidatos
   • Selección del mejor modelo por ROC-AUC
-  • Refit sobre datos completos + persistencia joblib
+  • Refit sobre datos completos con calibración isotónica + persistencia joblib
         │
         ├──► models/cesarea_pipeline.pkl
         └──► models/bajo_peso_pipeline.pkl
@@ -341,6 +341,22 @@ La línea base de la AP es la tasa de positivos: el modelo de bajo peso (AP 0,52
 los casos unas 5,7 veces mejor que el azar (0,092). El modelo de cesárea discrimina de forma
 moderada (0,719): buena parte de la decisión de cesárea depende de factores clínicos que el
 certificado de nacido vivo no registra.
+
+### Calibración de las probabilidades
+
+Los pesos balanceados (`class_weight='balanced'`) mejoran la detección de casos raros pero
+inflan las probabilidades. Por eso el modelo guardado envuelve el pipeline ganador en una
+**calibración isotónica** (`CalibratedClassifierCV`, 5 particiones), que devuelve las
+probabilidades a la escala de las frecuencias reales sin cambiar el orden de los casos.
+Comprobación en una partición de prueba del 20 % (en `models/metricas_modelos.json`):
+
+| Objetivo | Tasa real | Prob. media sin calibrar | Prob. media calibrada | Brier sin calibrar | Brier calibrado |
+|---|---|---|---|---|---|
+| `CESAREA` | 44,6 % | 49,1 % | 44,6 % | 0,213 | 0,211 |
+| `BAJO_PESO` | 9,2 % | 30,4 % | 9,1 % | 0,123 | 0,058 |
+
+El ROC-AUC en esa partición no cambia con la calibración (0,718 en cesárea y 0,880 en bajo
+peso): el modelo ordena igual los casos, pero ahora sus porcentajes se leen como probabilidades.
 
 Las celdas "ROC-AUC (test)" del notebook 03 evalúan sobre datos que el modelo ya vio al
 reentrenarse con todo el dataset, por lo que son optimistas; las métricas de referencia
